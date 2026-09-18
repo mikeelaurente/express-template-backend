@@ -1,0 +1,28 @@
+### Authentication Endpoints
+
+@baseUrl = http://localhost:3000/api/auth
+@accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI5NjAzMjBqdGR3dCIsImlhdCI6MTc4OTc0NTMxNywiZXhwIjoxNzg5NzQ2MjE3fQ.9YjM3a5CA6rpGz2GEoZBgKWeKgGRW2TCCj4YLRMZf5g
+
+### Register
+POST {{baseUrl}}/register
+Content-Type: application/json
+
+{
+  "name": "John Doe",
+  "email": "user@example.com",
+  "password": "password123"
+}
+
+#### Login
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "password123"
+}
+
+### Get Current User
+GET {{baseUrl}}/me
+Authorization: Bearer {{accessToken}}
+
