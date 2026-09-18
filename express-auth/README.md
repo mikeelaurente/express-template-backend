@@ -181,49 +181,61 @@ Return safe user info (HTTP 200)
 
 ## Database Integration
 
-This template intentionally **does not include database code**. The authentication logic is completely independent of any specific database.
+### Architecture: Abstraction vs Implementation
 
-### How to Connect a Database
+This template separates the **abstraction** (what authentication needs) from the **implementation** (where data lives).
 
-Implement the `UserRepository` interface for your database:
-
-```typescript
-// src/database/repositories/postgres-user.repository.ts
-import { UserRepository } from '@/modules/users/user.repository';
-import { User } from '@/modules/users/user.types';
-
-export class PostgresUserRepository implements UserRepository {
-  async findUserByEmail(email: string): Promise<User | null> {
-    // Your PostgreSQL query here using Kysely, Prisma, or raw SQL
-  }
-
-  async findUserById(userId: string): Promise<User | null> {
-    // Your PostgreSQL query here
-  }
-
-  async createUser(user: Omit<User, 'id' | 'createdAt'>): Promise<User> {
-    // Your PostgreSQL insert here, generate ID and createdAt
-  }
-}
+```
+UserRepository (abstraction)
+    ├─ Defines what methods authentication needs:
+    │   ├─ findUserByEmail()
+    │   ├─ findUserById()
+    │   └─ createUser()
+    │
+    └─ Implemented by:
+        ├─ InMemoryUserRepository (demo/development only)
+        ├─ PostgresUserRepository (your production choice)
+        ├─ MongoUserRepository (your production choice)
+        └─ Any other database you choose
 ```
 
-Then pass it to the server:
+### Demo: InMemoryUserRepository
+
+The template includes `InMemoryUserRepository` for **development and testing only**.
+
+**Location:** `src/infrastructure/in-memory/in-memory-user.repository.ts`
+
+**Characteristics:**
+
+- Stores users in a JavaScript Map
+- Data is lost when the process stops
+- Perfect for learning and quick testing
+- ⚠️ **Not suitable for production**
+
+**Current usage in `src/index.ts`:**
 
 ```typescript
-// src/index.ts
-import { startServer } from './server';
-import { PostgresUserRepository } from './database/repositories/postgres-user.repository';
+import { InMemoryUserRepository } from './infrastructure/in-memory/in-memory-user.repository.js';
 
-const userRepository = new PostgresUserRepository();
+const userRepository = new InMemoryUserRepository();
 startServer(userRepository);
 ```
 
-### Example Implementations
+### Production: Implement Your Own Repository
 
-**PostgreSQL + Kysely:**
+To use a real database, create a class implementing `UserRepository`:
+
+**Example: PostgreSQL**
 
 ```typescript
+// src/infrastructure/postgres/postgres-user.repository.ts
+import type { User } from '@/modules/users/user.types';
+import type { UserRepository } from '@/modules/users/user.repository';
+import { Kysely } from 'kysely';
+
 export class PostgresUserRepository implements UserRepository {
+  constructor(private db: Kysely<any>) {}
+
   async findUserByEmail(email: string): Promise<User | null> {
     return (
       this.db
@@ -233,33 +245,108 @@ export class PostgresUserRepository implements UserRepository {
         .executeTakeFirst() ?? null
     );
   }
-  // ... etc
+
+  async findUserById(userId: string): Promise<User | null> {
+    return (
+      this.db
+        .selectFrom('users')
+        .selectAll()
+        .where('id', '=', userId)
+        .executeTakeFirst() ?? null
+    );
+  }
+
+  async createUser(user: Omit<User, 'id' | 'createdAt'>): Promise<User> {
+    return this.db
+      .insertInto('users')
+      .values({
+        ...user,
+        created_at: new Date(),
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
+}
+```
+
+**Then use it in `src/index.ts`:**
+
+```typescript
+import { startServer } from './server.js';
+import { PostgresUserRepository } from './infrastructure/postgres/postgres-user.repository.js';
+import { db } from './database/connection.js';
+
+const userRepository = new PostgresUserRepository(db);
+startServer(userRepository);
+```
+
+### More Examples
+
+**MongoDB + Mongoose:**
+
+```typescript
+// src/infrastructure/mongo/mongo-user.repository.ts
+import { UserRepository } from '@/modules/users/user.repository';
+import { UserModel } from './user.model';
+
+export class MongoUserRepository implements UserRepository {
+  async findUserByEmail(email: string) {
+    return UserModel.findOne({ email }).lean();
+  }
+
+  async findUserById(userId: string) {
+    return UserModel.findById(userId).lean();
+  }
+
+  async createUser(user: Omit<User, 'id' | 'createdAt'>) {
+    const doc = await UserModel.create({
+      ...user,
+      createdAt: new Date(),
+    });
+    return doc.toObject();
+  }
 }
 ```
 
 **PostgreSQL + Prisma:**
 
 ```typescript
+// src/infrastructure/prisma/prisma-user.repository.ts
+import { UserRepository } from '@/modules/users/user.repository';
+import { PrismaClient } from '@prisma/client';
+
 export class PrismaUserRepository implements UserRepository {
-  async findUserByEmail(email: string): Promise<User | null> {
+  constructor(private prisma: PrismaClient) {}
+
+  async findUserByEmail(email: string) {
     return this.prisma.user.findUnique({ where: { email } });
   }
-  // ... etc
+
+  async findUserById(userId: string) {
+    return this.prisma.user.findUnique({ where: { id: userId } });
+  }
+
+  async createUser(user: Omit<User, 'id' | 'createdAt'>) {
+    return this.prisma.user.create({
+      data: { ...user, createdAt: new Date() },
+    });
+  }
 }
 ```
 
-**MongoDB + Mongoose:**
+### Key Point: No Changes to Authentication
+
+The `AuthService` and all authentication logic remain **completely unchanged** regardless of your database choice:
 
 ```typescript
-export class MongoUserRepository implements UserRepository {
-  async findUserByEmail(email: string): Promise<User | null> {
-    return UserModel.findOne({ email }).lean();
-  }
-  // ... etc
+// The AuthService works with ANY UserRepository implementation
+export class AuthService {
+  constructor(private userRepository: UserRepository) {}
+  // ... register(), login(), getUserById() methods unchanged
 }
 ```
 
-The `AuthService` and all other components remain **completely unchanged** regardless of which database you choose.
+This is why the template is **database-agnostic**: the authentication core depends only on the `UserRepository` abstraction, not any concrete implementation.
 
 ## Installation
 
@@ -411,6 +498,7 @@ POST   /api/auth/register            ---- 409 ---- 5ms
 ```
 express-auth/
 ├── src/
+│   ├── index.ts                        # Application entry point
 │   ├── app.ts                          # Express app setup
 │   ├── server.ts                       # Server startup
 │   ├── config/
@@ -428,8 +516,11 @@ express-auth/
 │   │   │   ├── auth.service.ts         # Business logic
 │   │   │   └── auth.types.ts           # DTO types
 │   │   └── users/
-│   │       ├── user.repository.ts      # Data access interface
+│   │       ├── user.repository.ts      # Data access interface (abstraction)
 │   │       └── user.types.ts           # User domain types
+│   ├── infrastructure/
+│   │   └── in-memory/                  # ⚠️ Demo implementation only
+│   │       └── in-memory-user.repository.ts  # In-memory UserRepository
 │   └── shared/
 │       ├── auth/
 │       │   ├── password.ts             # Password hashing

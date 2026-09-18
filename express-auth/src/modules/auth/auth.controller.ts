@@ -115,7 +115,7 @@ export class AuthController {
     try {
       // Get user ID from authenticated request
       // auth.middleware ensures this is set
-      const userId = (req as any).user?.userId;
+      const userId = req.user?.userId;
 
       if (!userId) {
         throw new AppError('Unauthorized', 401);

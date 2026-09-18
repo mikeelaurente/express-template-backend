@@ -1,22 +1,30 @@
 /**
  * Application entry point
  *
- * This example uses an in-memory repository for development.
- * For production, replace InMemoryUserRepository with your actual
- * database implementation (PostgreSQL, MongoDB, etc.)
+ * This entry point demonstrates how to wire the authentication system.
  *
- * Example with PostgreSQL + Kysely:
+ * Currently uses InMemoryUserRepository (for development/demo only).
+ *
+ * To switch to a real database:
+ *   1. Create a repository implementing UserRepository interface
+ *   2. Replace the import below
+ *   3. Instantiate and pass to startServer()
+ *
+ * Example with PostgreSQL:
  *   ```
- *   import { PostgresUserRepository } from './repositories/postgres.repository.js';
+ *   import { PostgresUserRepository } from './infrastructure/postgres/postgres-user.repository.js';
+ *   import { db } from './database/connection.js';
+ *
  *   const userRepository = new PostgresUserRepository(db);
  *   startServer(userRepository);
  *   ```
  */
 
 import { startServer } from './server.js';
-import { InMemoryUserRepository } from './repositories/in-memory.repository.js';
+import { InMemoryUserRepository } from './infrastructure/in-memory/in-memory-user.repository.js';
 
 // Create an in-memory repository for development
+// Replace this with your actual database repository for production
 const userRepository = new InMemoryUserRepository();
 
 // Start the server

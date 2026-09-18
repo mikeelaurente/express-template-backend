@@ -50,7 +50,7 @@ export class AuthMiddleware {
 
       // Attach user info to request
       // This makes req.user available in route handlers
-      (req as any).user = payload;
+      req.user = payload;
 
       next();
     } catch (error) {
